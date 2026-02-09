@@ -33,9 +33,11 @@ type RedisConfig struct {
 }
 
 type LLMConfig struct {
-	APIKey string `yaml:"api_key"`
-	APIURL string `yaml:"api_url"`
-	Model  string `yaml:"model"`
+	APIKey      string  `yaml:"api_key"`
+	APIURL      string  `yaml:"api_url"`
+	Model       string  `yaml:"model"`
+	Temperature float64 `yaml:"temperature"`
+	MaxTokens   int     `yaml:"max_tokens"`
 }
 
 type AuthConfig struct {
@@ -67,7 +69,7 @@ func defaults() *Config {
 		Server:   ServerConfig{Port: 8080},
 		Database: DatabaseConfig{DSN: "postgres://postgres:postgres@localhost:5432/agentfi?sslmode=disable"},
 		Redis:    RedisConfig{URL: "redis://localhost:6379"},
-		LLM:      LLMConfig{Model: "gpt-4o"},
+		LLM:      LLMConfig{Model: "gpt-4o", Temperature: 0.7, MaxTokens: 4096},
 		Auth:     AuthConfig{JWTSecret: "change-me"},
 		Log:      LogConfig{Level: "info"},
 	}
@@ -104,6 +106,16 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AGENTFI_LLM_MODEL"); v != "" {
 		cfg.LLM.Model = v
+	}
+	if v := os.Getenv("AGENTFI_LLM_TEMPERATURE"); v != "" {
+		if t, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.LLM.Temperature = t
+		}
+	}
+	if v := os.Getenv("AGENTFI_LLM_MAX_TOKENS"); v != "" {
+		if mt, err := strconv.Atoi(v); err == nil {
+			cfg.LLM.MaxTokens = mt
+		}
 	}
 	if v := os.Getenv("AGENTFI_AUTH_JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v

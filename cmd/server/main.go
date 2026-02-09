@@ -15,6 +15,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/agentfi/agentfi-go-backend/internal/agent"
+	"github.com/agentfi/agentfi-go-backend/internal/auth"
+	"github.com/agentfi/agentfi-go-backend/internal/mcp"
+	"github.com/agentfi/agentfi-go-backend/internal/store"
 	"github.com/agentfi/agentfi-go-backend/pkg/config"
 )
 
@@ -61,8 +65,11 @@ func main() {
 	}
 	slog.Info("redis connected")
 
+	// --- Store ---
+	st := store.NewStore(pool)
+
 	// --- Router ---
-	r := newRouter(pool, rdb, cfg)
+	r := newRouter(st, rdb, cfg)
 
 	// --- HTTP Server ---
 	srv := &http.Server{
@@ -95,7 +102,7 @@ func main() {
 	slog.Info("server stopped")
 }
 
-func newRouter(pool *pgxpool.Pool, rdb *redis.Client, cfg *config.Config) *chi.Mux {
+func newRouter(st *store.Store, rdb *redis.Client, cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Standard middleware
@@ -110,9 +117,34 @@ func newRouter(pool *pgxpool.Pool, rdb *redis.Client, cfg *config.Config) *chi.M
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// API routes will be registered by each module in later tasks
+	// --- Auth ---
+	authSvc := auth.NewService(rdb, cfg.Auth.JWTSecret)
+	authHandler := auth.NewHandler(authSvc)
+
+	// --- Agent ---
+	agentSvc := agent.NewService(st, cfg.LLM)
+	agentHandler := agent.NewHandler(agentSvc)
+
+	// --- MCP ---
+	mcpMgr := mcp.NewManager(st)
+	mcpHandler := mcp.NewHandler(mcpMgr, st)
+
+	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// auth, agents, invest, dashboard, mcp-servers, ws — wired in later tasks
+		// Public auth endpoints
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/nonce", authHandler.HandleNonce)
+			r.Post("/verify", authHandler.HandleVerify)
+		})
+
+		// Protected routes (require JWT)
+		r.Group(func(r chi.Router) {
+			r.Use(authSvc.JWTMiddleware)
+			r.Mount("/agents", agentHandler.Routes())
+			r.Get("/mcp-servers", mcpHandler.HandleList)
+			r.Post("/mcp-servers", mcpHandler.HandleRegister)
+			// invest, dashboard, ws — wired in later tasks
+		})
 	})
 
 	return r
