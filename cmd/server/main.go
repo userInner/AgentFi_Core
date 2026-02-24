@@ -17,6 +17,7 @@ import (
 
 	"github.com/agentfi/agentfi-go-backend/internal/agent"
 	"github.com/agentfi/agentfi-go-backend/internal/auth"
+	"github.com/agentfi/agentfi-go-backend/internal/invest"
 	"github.com/agentfi/agentfi-go-backend/internal/mcp"
 	"github.com/agentfi/agentfi-go-backend/internal/store"
 	"github.com/agentfi/agentfi-go-backend/pkg/config"
@@ -129,6 +130,10 @@ func newRouter(st *store.Store, rdb *redis.Client, cfg *config.Config) *chi.Mux 
 	mcpMgr := mcp.NewManager(st)
 	mcpHandler := mcp.NewHandler(mcpMgr, st)
 
+	// --- Invest ---
+	investSvc := invest.NewService(st)
+	investHandler := invest.NewHandler(investSvc)
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		// Public auth endpoints
@@ -143,7 +148,9 @@ func newRouter(st *store.Store, rdb *redis.Client, cfg *config.Config) *chi.Mux 
 			r.Mount("/agents", agentHandler.Routes())
 			r.Get("/mcp-servers", mcpHandler.HandleList)
 			r.Post("/mcp-servers", mcpHandler.HandleRegister)
-			// invest, dashboard, ws — wired in later tasks
+			r.Post("/invest", investHandler.HandleDeposit)
+			r.Post("/redeem", investHandler.HandleRedeem)
+			r.Get("/portfolio", investHandler.HandlePortfolio)
 		})
 	})
 
